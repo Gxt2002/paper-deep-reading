@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="MindDrive 双 LoRA、语言动作空间、在线 PPO 与闭环驾驶源码解析">
+  <title>MindDrive 架构深度拆解</title>
+  <style>
+    :root {
+      color-scheme: light dark; --bg:#f7f8fa; --surface:#fff; --surface2:#f0f2f5;
+      --text:#20242c; --muted:#646b78; --line:#d9dde5; --accent:#1769e0;
+      --accentSoft:#e8f0fd; --warn:#9a5b00; --danger:#b42318; --code:#171a21; --codeText:#d7dce5;
+    }
+    @media(prefers-color-scheme:dark){:root{--bg:#15171b;--surface:#1d2026;--surface2:#252931;
+      --text:#e8eaf0;--muted:#a0a6b2;--line:#343944;--accent:#6ea8fe;--accentSoft:#202f49;
+      --warn:#f1b45b;--danger:#ff8a80;--code:#101217}}
+    *{box-sizing:border-box} html{scroll-behavior:smooth} body{margin:0;background:var(--bg);color:var(--text);
+      font:15px/1.7 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    button{font:inherit}.page{max-width:1180px;margin:auto;padding:32px 22px 64px}.hero{display:grid;
+      grid-template-columns:1fr auto;gap:24px;align-items:end}h1{margin:0;font-size:clamp(28px,5vw,48px);
+      line-height:1.12;letter-spacing:-.035em}h2{margin:34px 0 12px;font-size:23px;line-height:1.3}
+    h3{margin:20px 0 8px;font-size:17px}p{margin:8px 0}.subtitle{max-width:800px;margin-top:12px;
+      color:var(--muted);font-size:17px}.badge{display:inline-flex;padding:5px 10px;border:1px solid var(--accent);
+      border-radius:999px;color:var(--accent);background:var(--accentSoft);white-space:nowrap}
+    .tabs{position:sticky;top:0;z-index:10;display:flex;gap:8px;overflow-x:auto;margin:28px -8px 0;
+      padding:12px 8px;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(12px);
+      border-bottom:1px solid var(--line)}.tab,.small{padding:7px 13px;border:1px solid var(--line);
+      border-radius:999px;color:var(--muted);background:var(--surface);cursor:pointer;white-space:nowrap}
+    .tab:hover,.tab.active,.small:hover{color:var(--accent);border-color:var(--accent);background:var(--accentSoft)}
+    .panel{display:none;animation:appear .18s ease-out}.panel.active{display:block}@keyframes appear{from{opacity:.2;transform:translateY(4px)}}
+    .stats,.grid2,.grid3,.flow{display:grid;gap:12px}.stats{grid-template-columns:repeat(4,1fr);margin:22px 0}
+    .grid2{grid-template-columns:repeat(2,1fr)}.grid3{grid-template-columns:repeat(3,1fr)}
+    .stat,.card,.node{border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+    .stat{padding:18px}.stat strong{display:block;color:var(--accent);font-size:28px;line-height:1.1}
+    .stat span,.node span{color:var(--muted);font-size:13px}.card{padding:18px}.card h3{margin-top:0}
+    .node{padding:14px 16px}.node strong{display:block;color:var(--accent)}.arrow{text-align:center;color:var(--muted);font-size:22px;line-height:1}
+    .callout{margin:16px 0;padding:13px 16px;border-left:3px solid var(--accent);background:var(--accentSoft);
+      border-radius:4px 8px 8px 4px}.callout.warn{border-color:var(--warn)}.callout.danger{border-color:var(--danger)}
+    code{padding:2px 5px;border-radius:4px;background:var(--surface2);color:var(--accent);
+      font:.9em ui-monospace,SFMono-Regular,Consolas,monospace}pre{overflow-x:auto;padding:16px;border:1px solid var(--line);
+      border-radius:9px;background:var(--code);color:var(--codeText);font:13px/1.65 ui-monospace,SFMono-Regular,Consolas,monospace}
+    table{width:100%;border-collapse:collapse;background:var(--surface)}th,td{padding:11px 12px;border:1px solid var(--line);
+      text-align:left;vertical-align:top}th{color:var(--muted);background:var(--surface2);font-size:13px}
+    .table{overflow-x:auto;border-radius:8px}details{border:1px solid var(--line);border-radius:8px;background:var(--surface);
+      margin:9px 0;padding:0 14px}summary{padding:13px 0;cursor:pointer;font-weight:650}details p{padding:0 0 12px;color:var(--muted)}
+    .controls{display:flex;gap:8px;margin:12px 0}.source{margin-top:42px;padding-top:18px;border-top:1px solid var(--line);
+      color:var(--muted);font-size:13px}a{color:var(--accent)}
+    @media(max-width:760px){.page{padding:22px 14px 48px}.hero{grid-template-columns:1fr}.stats,.grid2,.grid3{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<main class="page">
+  <header class="hero">
+    <div><h1>MindDrive 架构深度拆解</h1>
+      <p class="subtitle">从 ORION 骨架、双 LoRA 专家与语言动作空间，到 CARLA rollout、PPO 和闭环控制。面向源码理解与秋招盘问。</p></div>
+    <span class="badge">ECCV 2026 · RL/VLA 面试版</span>
+  </header>
+  <nav class="tabs">
+    <button class="tab active" data-tab="overview">核心思想</button>
+    <button class="tab" data-tab="architecture">模型架构</button>
+    <button class="tab" data-tab="il">模仿学习</button>
+    <button class="tab" data-tab="rl">在线 PPO</button>
+    <button class="tab" data-tab="system">数据与闭环</button>
+    <button class="tab" data-tab="compare">对比与结果</button>
+    <button class="tab" data-tab="interview">面试盘问</button>
+  </nav>
+
+  <section id="overview" class="panel active">
+    <div class="callout"><strong>一句话定义：</strong>MindDrive 不直接在高维连续轨迹中做 RL，而是让 Decision Expert 在 7 类速度语言动作中探索，再由 Action Expert 将语言决策翻译为连续轨迹。</div>
+    <div class="stats">
+      <div class="stat"><strong>7</strong><span>PPO 速度动作</span></div>
+      <div class="stat"><strong>2</strong><span>LoRA 专家</span></div>
+      <div class="stat"><strong>0.5B / 3B</strong><span>Qwen2 模型规模</span></div>
+      <div class="stat"><strong>80.59</strong><span>3B Driving Score</span></div>
+    </div>
+    <h2>问题降维</h2>
+    <div class="flow">
+      <div class="node"><strong>连续轨迹 RL</strong><span>动作维度高、CARLA rollout 昂贵、有效探索概率低</span></div><div class="arrow">↓</div>
+      <div class="node"><strong>7 类语言速度动作</strong><span>停车、加速、减速、维持不同速度等有限决策</span></div><div class="arrow">↓</div>
+      <div class="node"><strong>Action Expert</strong><span>利用 IL 学到的语言→轨迹映射生成可执行 waypoint</span></div><div class="arrow">↓</div>
+      <div class="node"><strong>Trajectory reward → PPO</strong><span>闭环成功或违规奖励反馈到 Decision Expert</span></div>
+    </div>
+    <h2>三个最重要的 insight</h2>
+    <div class="grid3">
+      <article class="card"><h3>RL 只学“做什么”</h3><p>Decision Expert 只优化速度 meta-action；连续轨迹生成能力主要由 IL 固定下来。</p></article>
+      <article class="card"><h3>双 LoRA 隔离能力</h3><p>稀疏 reward 更新 Decision Expert，不破坏 Action Expert 已学会的轨迹执行能力。</p></article>
+      <article class="card"><h3>Path 不参与 PPO</h3><p>横向 path mode 来自 RoutePlanner。RL 主要改善纵向决策，而不是完整规划。</p></article>
+    </div>
+  </section>
+
+  <section id="architecture" class="panel">
+    <h2>从图像到双轨迹</h2>
+    <div class="table"><table><thead><tr><th>阶段</th><th>典型形状</th><th>作用</th></tr></thead><tbody>
+      <tr><td>六相机输入</td><td><code>(B,6,3,640,640)</code></td><td>环视 RGB</td></tr>
+      <tr><td>EVA-ViT</td><td><code>(B,6,1024,40,40)</code></td><td>得到 9600 个空间 token</td></tr>
+      <tr><td>PETR 投影</td><td><code>(B,9600,256)</code></td><td>检测、地图和时序 query</td></tr>
+      <tr><td>VLM 前缀</td><td><code>(B,≈513,H_llm)</code></td><td>256 det + ego + 256 map token</td></tr>
+      <tr><td>双 waypoint hidden</td><td><code>(B,2,H_llm)</code></td><td>speed feature + path feature</td></tr>
+      <tr><td>Speed decoder</td><td><code>(B,7,6,2)</code></td><td>7 种速度动作的 3 秒轨迹</td></tr>
+      <tr><td>Path decoder</td><td><code>(B,6,20,2)</code></td><td>6 种 route command 的长路径</td></tr>
+    </tbody></table></div>
+    <h2>双 LoRA 专家</h2>
+    <div class="grid2">
+      <article class="card"><h3>Decision Expert</h3><p>读取 meta-action QA，在 7 个速度 token 上形成策略分布。Rollout 采样，评测 argmax，PPO 更新该 LoRA。</p></article>
+      <article class="card"><h3>Action Expert</h3><p>读取规划 QA，在 <code>&lt;waypoint_ego&gt;</code> 与 <code>&lt;path_waypoint_ego&gt;</code> 位置提取 hidden state，再由 VAE 生成轨迹。</p></article>
+    </div>
+    <pre>Minddrive.forward_train()
+└─ forward_pts_train()
+   ├─ map_head → map query / lane prediction
+   ├─ pts_bbox_head(outs_lane) → det query / agent motion
+   ├─ concat vision tokens → Qwen2
+   ├─ action_expert → two waypoint hidden states
+   ├─ speed VAE/GRU → (B,7,6,2)
+   ├─ path VAE/GRU  → (B,6,20,2)
+   └─ perception + VLM + planning losses</pre>
+    <div class="callout warn"><strong>架构细节：</strong>训练中 map head 先于 det head，det head 会接收 <code>outs_lane</code>；这比 ORION 中简单并列调用体现了更强的地图→运动耦合。</div>
+  </section>
+
+  <section id="il" class="panel">
+    <h2>三阶段模仿学习</h2>
+    <div class="table"><table><thead><tr><th>阶段</th><th>目标</th><th>关键设置</th></tr></thead><tbody>
+      <tr><td>Stage 1</td><td>感知、VQA、meta-action 语言预训练</td><td><code>pretrain=True</code>，不启用轨迹 token</td></tr>
+      <tr><td>Stage 2</td><td>Planning-only，语言到轨迹映射</td><td><code>use_gen_token=True</code>，speed/path 解耦</td></tr>
+      <tr><td>Stage 3</td><td>规划与通用 QA 联合微调</td><td>80% planning，20% mixed QA</td></tr>
+    </tbody></table></div>
+    <h2>IL 损失如何耦合</h2>
+    <div class="grid2">
+      <article class="card"><h3>感知与地图</h3><p>检测 focal/L1、DN、交通灯、地图分类与 11 控制点回归、agent 多模态运动。</p></article>
+      <article class="card"><h3>Speed / Path planning</h3><p>选中 mode 的 L1、地图边界、agent 碰撞和 VAE prior/posterior 对齐；path 分支有对应的 <code>pw_*</code> loss。</p></article>
+    </div>
+    <h2>IL 到 RL 的权重桥接</h2>
+    <pre>Stage 3 checkpoint
+  ├─ action_expert LoRA → decision_expert LoRA
+  └─ lm_head            → value_net
+
+目的：让 policy 和 critic 从已学会的视觉语言表示开始，
+而不是在昂贵的 CARLA 环境中随机探索。</pre>
+    <p>README 明确说明 IL 阶段主要训练 Action Expert LoRA。复制 checkpoint 是在线 RL 能够稳定启动的关键，而不是普通格式转换。</p>
+  </section>
+
+  <section id="rl" class="panel">
+    <h2>Rollout → Buffer → PPO</h2>
+    <pre>CARLA observation
+  → Decision Expert: π(a|s), a ∈ {0,...,6}
+  → sample speed action + value V(s)
+  → Action Expert: speed/path trajectories
+  → PID → CARLA
+  → sparse reward
+  → RolloutBuffer
+  → GAE
+  → cached inputs_embeds PPO replay</pre>
+    <h2>PPO 目标</h2>
+    <div class="grid3">
+      <article class="card"><h3>Policy ratio</h3><p><code>r = exp(logπ_new - logπ_old)</code>，clip 范围为 <code>1±0.2</code>。</p></article>
+      <article class="card"><h3>Value loss</h3><p><code>0.5 × MSE(V_pred, return)</code>，由 value projection 预测。</p></article>
+      <article class="card"><h3>GAE</h3><p><code>γ=0.99, λ=1.0</code>。稀疏终止奖励下接近 Monte Carlo，方差较高。</p></article>
+    </div>
+    <h2>奖励</h2>
+    <div class="table"><table><thead><tr><th>事件</th><th>Reward</th><th>Episode</th></tr></thead><tbody>
+      <tr><td>路线完成 100%</td><td>+1</td><td>结束</td></tr>
+      <tr><td>碰撞、闯灯、偏航、驶出车道等</td><td>-1</td><td>结束</td></tr>
+      <tr><td>普通中间 step</td><td>0</td><td>继续</td></tr>
+    </tbody></table></div>
+    <div class="callout danger"><strong>关键风险：</strong>稀疏 ±1 reward、<code>gae_lambda=1</code> 和固定 rollout 多 epoch 训练会产生高方差与 policy staleness。PPO clipping/KL 只能缓解，不能消除该问题。</div>
+    <h2>真正被 RL 更新的参数</h2>
+    <p>主要只有 <code>decision_expert</code> LoRA 与 <code>value_net_pro</code>。视觉 backbone、PETR、Action Expert 和 trajectory decoder 冻结。因此这是“语言决策层 RL”，不是全链路端到端 RL。</p>
+  </section>
+
+  <section id="system" class="panel">
+    <h2>离线数据与时间基准</h2>
+    <div class="table"><table><thead><tr><th>字段</th><th>形状</th><th>语义</th></tr></thead><tbody>
+      <tr><td>ego_fut_trajs</td><td><code>(6,2)</code></td><td>每 0.5 秒一个位移增量，3 秒 horizon</td></tr>
+      <tr><td>path_points_future</td><td><code>(20,2)</code></td><td>约 1 米间隔的路径增量</td></tr>
+      <tr><td>cmd_speed</td><td><code>(7,)</code></td><td>速度 meta-action one-hot</td></tr>
+      <tr><td>cmd_path / ego_fut_cmd</td><td><code>(6,)</code></td><td>路径/route command one-hot</td></tr>
+      <tr><td>can_bus</td><td><code>(18,)</code></td><td>位置、姿态、速度、加速度和角速度</td></tr>
+    </tbody></table></div>
+    <div class="callout warn">离线 annotation 是 10 Hz，CARLA rollout/eval 是 20 Hz；轨迹监督按 5 帧采样得到 0.5 秒间隔。时间戳和 memory 对齐错误会产生隐蔽的动态偏差。</div>
+    <h2>轨迹到控制</h2>
+    <div class="grid2">
+      <article class="card"><h3>Path waypoint：20×2</h3><p>PID 在路径折线上选择约 3.5 米前方 aim point，用于 steering。</p></article>
+      <article class="card"><h3>Speed waypoint：6×2</h3><p>PID 根据前几个 waypoint 距离估计 desired speed，用于 throttle/brake。</p></article>
+    </div>
+    <p>系统还有 throttle 上限、油门刹车互斥和 <code>speed &gt; 5m/s → throttle=0</code> 等工程启发式。因此 MindDrive 仍是 VLA planning + classical control。</p>
+    <h2>工程 failure modes</h2>
+    <div class="grid2">
+      <article class="card"><h3>Adapter 错误</h3><p>Decision/Action adapter 激活错误会导致动作概率或轨迹 hidden state 失效。</p></article>
+      <article class="card"><h3>Path command 错位</h3><p>速度决策正确，但 RoutePlanner command 对错 mode 时仍会走错路径。</p></article>
+      <article class="card"><h3>坐标与固定外参</h3><p>CARLA 左右手系、Y 轴符号、compass 和硬编码投影矩阵容易产生静默偏移。</p></article>
+      <article class="card"><h3>缓存 rollout 过旧</h3><p>固定数据训练多个 epoch 后不再严格 on-policy，需要重新采样。</p></article>
+    </div>
+  </section>
+
+  <section id="compare" class="panel">
+    <h2>MindDrive 相比 ORION</h2>
+    <div class="table"><table><thead><tr><th>维度</th><th>ORION</th><th>MindDrive</th></tr></thead><tbody>
+      <tr><td>视觉骨架</td><td>EVA-ViT + 双 PETR</td><td>基本继承</td></tr>
+      <tr><td>LLM</td><td>LLaMA 路线，约 7B</td><td>Qwen2-0.5B / Qwen2.5-3B</td></tr>
+      <tr><td>LoRA</td><td>单 adapter</td><td>Decision + Action 双 adapter</td></tr>
+      <tr><td>Planning token</td><td>单 waypoint token</td><td>speed/path 两个 token</td></tr>
+      <tr><td>轨迹 mode</td><td>6 route commands</td><td>7 speed + 6 path</td></tr>
+      <tr><td>在线 RL</td><td>无</td><td>CARLA rollout + PPO</td></tr>
+      <tr><td>RL action</td><td>—</td><td>7 类速度语言 token</td></tr>
+    </tbody></table></div>
+    <h2>结果</h2>
+    <div class="table"><table><thead><tr><th>模型</th><th>L2 @ 2s</th><th>Driving Score</th><th>Success Rate</th></tr></thead><tbody>
+      <tr><td>ORION-7B</td><td>0.68 m</td><td>77.74</td><td>54.62%</td></tr>
+      <tr><td>MindDrive-0.5B</td><td>0.69 m</td><td>78.04</td><td>55.09%</td></tr>
+      <tr><td>MindDrive-3B</td><td>0.66 m</td><td>80.59</td><td>58.26%</td></tr>
+    </tbody></table></div>
+    <div class="callout"><strong>读数 insight：</strong>0.5B 的开环 L2 略差于 ORION，但闭环 DS/SR 略高。这支持“RL 修正闭环决策边界，而非单纯提升专家轨迹拟合”的解释。</div>
+    <div class="callout warn"><strong>文档不一致：</strong>README News 将 3B SR 写为 55.09，结果表写为 58.26。严谨引用时应说明采用结果表或官方 eval JSON。</div>
+  </section>
+
+  <section id="interview" class="panel">
+    <h2>高频盘问</h2>
+    <div class="controls"><button id="open" class="small">展开答案</button><button id="close" class="small">收起自测</button></div>
+    <details><summary>为什么不直接对连续轨迹做 RL？</summary><p>动作空间巨大且 CARLA rollout 昂贵。7 类语言动作显著提升探索效率，连续轨迹交给 IL 训练好的 Action Expert。</p></details>
+    <details><summary>双 LoRA 为什么优于两个完整 LLM？</summary><p>共享基础视觉语言表示、参数增量小，同时隔离决策 RL 与轨迹执行，减少 catastrophic forgetting。</p></details>
+    <details><summary>奖励如何回传到语言空间？</summary><p>Rollout 保存速度动作、旧 log-prob、advantage 和缓存 embedding；PPO 对 7 个 meta-action token 的概率更新 Decision Expert LoRA。</p></details>
+    <details><summary>为什么 path 不参与 PPO？</summary><p>利用 RoutePlanner 强先验并减少组合动作空间；代价是 RL 不能优化横向选择和变道时机。</p></details>
+    <details><summary>为什么要 convert checkpoint？</summary><p>IL 主要训练 Action Expert。复制给 Decision Expert 与 value net，避免 policy/critic 从随机参数开始在线探索。</p></details>
+    <details><summary>缓存 inputs_embeds 的 trade-off？</summary><p>避免 PPO 重跑 EVA-ViT/PETR，速度快；但视觉不接收 RL 梯度，且缓存占磁盘，数据会随 policy 更新变旧。</p></details>
+    <details><summary>GAE λ=1 在稀疏 reward 下意味着什么？</summary><p>接近 Monte Carlo advantage，偏差低但方差高。可考虑更小 λ、progress shaping 或更密集的安全奖励。</p></details>
+    <details><summary>MindDrive 真的是 on-policy PPO 吗？</summary><p>目标是 PPO，但实现先保存 rollout，再用固定数据训练多个 epoch。数据逐渐 stale，必须依赖 clipping/KL 并定期重新 rollout。</p></details>
+    <details><summary>0.5B 为什么能接近甚至超过 ORION-7B？</summary><p>闭环性能不只由参数量决定。在线 reward 可以修正 IL 的决策偏差，有限动作空间也让小模型高效探索。</p></details>
+    <details><summary>最大的工程风险是什么？</summary><p>adapter 切换、route/path mode 错位、稀疏 reward、10/20 Hz 时间差、坐标外参、checkpoint 命名和 PID 启发式。</p></details>
+    <h2>回答框架</h2>
+    <div class="grid2">
+      <article class="card"><h3>1. Problem</h3><p>连续 RL 为什么探索低效？IL 为什么闭环失效？</p></article>
+      <article class="card"><h3>2. Decomposition</h3><p>Decision Expert 做什么，Action Expert 做什么？</p></article>
+      <article class="card"><h3>3. Evidence</h3><p>给出 7-way action、双 token、PPO 参数和源码调用链。</p></article>
+      <article class="card"><h3>4. Limitation</h3><p>只优化速度、稀疏 reward、缓存 policy staleness 与 PID 依赖。</p></article>
+    </div>
+  </section>
+
+  <footer class="source">
+    <p>完整 Markdown：<a href="./README.md">MindDrive 深度笔记</a> · 仓库：<a href="https://github.com/Gxt2002/paper-deep-reading">paper-deep-reading</a></p>
+    <p>依据 MindDrive 当前开源源码整理，重点包括 <code>minddrive.py</code>、<code>llava_qwen.py</code>、rollout runner、PPO runner 与 CARLA agent。</p>
+  </footer>
+</main>
+<script>
+  const tabs=[...document.querySelectorAll(".tab")],panels=[...document.querySelectorAll(".panel")];
+  function select(id,hash=true){id=document.getElementById(id)?id:"overview";tabs.forEach(x=>x.classList.toggle("active",x.dataset.tab===id));
+    panels.forEach(x=>x.classList.toggle("active",x.id===id));if(hash)history.replaceState(null,"","#"+id);window.scrollTo({top:0,behavior:"smooth"})}
+  tabs.forEach(x=>x.addEventListener("click",()=>select(x.dataset.tab)));
+  document.getElementById("open").addEventListener("click",()=>document.querySelectorAll("details").forEach(x=>x.open=true));
+  document.getElementById("close").addEventListener("click",()=>document.querySelectorAll("details").forEach(x=>x.open=false));
+  select(location.hash.slice(1),false);
+</script>
+</body>
+</html>

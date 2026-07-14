@@ -17,6 +17,7 @@
 | 论文 | 主题 | 在线讲义 | Markdown |
 | --- | --- | --- | --- |
 | ORION (ICCV 2025) | 视觉语言端到端自动驾驶 | [交互式网页](https://gxt2002.github.io/paper-deep-reading/papers/ORION/) | [完整笔记](papers/ORION/README.md) |
+| MindDrive (ECCV 2026) | 语言动作与在线强化学习 | [交互式网页](https://gxt2002.github.io/paper-deep-reading/papers/MindDrive/) | [完整笔记](papers/MindDrive/README.md) |
 
 ## 目录约定
 
@@ -24,10 +25,14 @@
 paper-deep-reading/
 ├── README.md
 └── papers/
-    └── ORION/
+    ├── ORION/
+    │   ├── README.md
+    │   ├── index.html
+    │   └── orion-architecture-interview-guide.canvas.tsx
+    └── MindDrive/
         ├── README.md
         ├── index.html
-        └── orion-architecture-interview-guide.canvas.tsx
+        └── mindDrive-architecture-interview-guide.canvas.tsx
 ```
 
 `index.html` 通过 GitHub Pages 提供跨平台交互阅读；`README.md` 用于检索和归档；`.canvas.tsx` 可在 Cursor Canvas 中打开。
