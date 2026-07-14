@@ -3,6 +3,8 @@
 > ORION: A Holistic End-to-End Autonomous Driving Framework by Vision-Language Instructed Action Generation  
 > ICCV 2025 · 面向代码理解与算法面试
 
+**在线交互版：** https://gxt2002.github.io/paper-deep-reading/papers/ORION/
+
 ## 1. 一句话理解
 
 ORION 将六相机视觉、结构化目标/地图查询、语言模型推理和生成式轨迹规划联合起来：

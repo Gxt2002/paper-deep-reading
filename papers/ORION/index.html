@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="ORION 端到端自动驾驶模型架构、训练、时序与面试解析">
+  <title>ORION 架构深度拆解</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f7f8fa;
+      --surface: #ffffff;
+      --surface-2: #f0f2f5;
+      --text: #20242c;
+      --muted: #646b78;
+      --line: #d9dde5;
+      --accent: #1769e0;
+      --accent-soft: #e8f0fd;
+      --good: #16794c;
+      --warn: #9a5b00;
+      --danger: #b42318;
+      --code: #171a21;
+      --code-text: #d7dce5;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #15171b;
+        --surface: #1d2026;
+        --surface-2: #252931;
+        --text: #e8eaf0;
+        --muted: #a0a6b2;
+        --line: #343944;
+        --accent: #6ea8fe;
+        --accent-soft: #202f49;
+        --good: #68d5a4;
+        --warn: #f1b45b;
+        --danger: #ff8a80;
+        --code: #101217;
+        --code-text: #d7dce5;
+      }
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.7 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    button { font: inherit; }
+    .page { max-width: 1180px; margin: 0 auto; padding: 32px 22px 64px; }
+    .hero { display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: end; }
+    h1 { margin: 0; font-size: clamp(28px, 5vw, 48px); line-height: 1.12; letter-spacing: -0.035em; }
+    h2 { margin: 34px 0 12px; font-size: 23px; line-height: 1.3; }
+    h3 { margin: 20px 0 8px; font-size: 17px; }
+    p { margin: 8px 0; }
+    .subtitle { max-width: 760px; margin-top: 12px; color: var(--muted); font-size: 17px; }
+    .badge {
+      display: inline-flex; padding: 5px 10px; border: 1px solid var(--accent);
+      border-radius: 999px; color: var(--accent); background: var(--accent-soft); white-space: nowrap;
+    }
+    .tabs {
+      position: sticky; top: 0; z-index: 10; display: flex; gap: 8px; overflow-x: auto;
+      margin: 28px -8px 0; padding: 12px 8px; background: color-mix(in srgb, var(--bg) 92%, transparent);
+      backdrop-filter: blur(12px); border-bottom: 1px solid var(--line);
+    }
+    .tab {
+      padding: 7px 13px; border: 1px solid var(--line); border-radius: 999px;
+      color: var(--muted); background: var(--surface); cursor: pointer; white-space: nowrap;
+    }
+    .tab:hover, .tab.active { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+    .panel { display: none; animation: appear .18s ease-out; }
+    .panel.active { display: block; }
+    @keyframes appear { from { opacity: .2; transform: translateY(4px); } }
+    .stats, .grid-2, .grid-3, .flow { display: grid; gap: 12px; }
+    .stats { grid-template-columns: repeat(4, 1fr); margin: 22px 0; }
+    .grid-2 { grid-template-columns: repeat(2, 1fr); }
+    .grid-3 { grid-template-columns: repeat(3, 1fr); }
+    .stat, .card, .node {
+      border: 1px solid var(--line); border-radius: 10px; background: var(--surface);
+    }
+    .stat { padding: 18px; }
+    .stat strong { display: block; color: var(--accent); font-size: 28px; line-height: 1.1; }
+    .stat span { color: var(--muted); font-size: 13px; }
+    .card { padding: 18px; }
+    .card h3 { margin-top: 0; }
+    .node { padding: 14px 16px; }
+    .node strong { display: block; color: var(--accent); }
+    .node span { color: var(--muted); }
+    .arrow { text-align: center; color: var(--muted); font-size: 22px; line-height: 1; }
+    .callout {
+      margin: 16px 0; padding: 13px 16px; border-left: 3px solid var(--accent);
+      background: var(--accent-soft); border-radius: 4px 8px 8px 4px;
+    }
+    .callout.warn { border-color: var(--warn); }
+    .callout.danger { border-color: var(--danger); }
+    code {
+      padding: 2px 5px; border-radius: 4px; background: var(--surface-2);
+      color: var(--accent); font: .9em ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+    pre {
+      overflow-x: auto; padding: 16px; border: 1px solid var(--line); border-radius: 9px;
+      background: var(--code); color: var(--code-text); font: 13px/1.65 ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+    table { width: 100%; border-collapse: collapse; background: var(--surface); }
+    th, td { padding: 11px 12px; border: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { color: var(--muted); background: var(--surface-2); font-size: 13px; }
+    .table-wrap { overflow-x: auto; border-radius: 8px; }
+    details {
+      border: 1px solid var(--line); border-radius: 8px; background: var(--surface);
+      margin: 9px 0; padding: 0 14px;
+    }
+    summary { padding: 13px 0; cursor: pointer; font-weight: 650; }
+    details p { padding: 0 0 12px; color: var(--muted); }
+    .answer-controls { display: flex; gap: 8px; margin: 12px 0; }
+    .small-button {
+      padding: 6px 11px; border: 1px solid var(--line); border-radius: 6px;
+      background: var(--surface); color: var(--text); cursor: pointer;
+    }
+    .small-button:hover { border-color: var(--accent); color: var(--accent); }
+    .source { margin-top: 42px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+    a { color: var(--accent); }
+    @media (max-width: 760px) {
+      .page { padding: 22px 14px 48px; }
+      .hero { grid-template-columns: 1fr; }
+      .stats, .grid-2, .grid-3 { grid-template-columns: 1fr; }
+      h2 { margin-top: 28px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="hero">
+      <div>
+        <h1>ORION 架构深度拆解</h1>
+        <p class="subtitle">从六相机视觉、PETR 时序查询和 LLM 推理，到 VAE 轨迹生成与 CARLA 闭环控制。面向源码理解与秋招盘问。</p>
+      </div>
+      <span class="badge">ICCV 2025 · 面试版</span>
+    </header>
+
+    <nav class="tabs" aria-label="章节">
+      <button class="tab active" data-tab="overview">总览</button>
+      <button class="tab" data-tab="forward">前向传播</button>
+      <button class="tab" data-tab="training">训练与损失</button>
+      <button class="tab" data-tab="temporal">数据与时序</button>
+      <button class="tab" data-tab="control">闭环控制</button>
+      <button class="tab" data-tab="interview">面试盘问</button>
+    </nav>
+
+    <section id="overview" class="panel active">
+      <div class="callout"><strong>一句话定义：</strong>ORION 用结构化视觉 token 驱动 VLM 推理，再以 <code>&lt;waypoint_ego&gt;</code> hidden state 为连续轨迹生成器提供条件。它输出轨迹，而不是直接输出方向盘和油门。</div>
+      <div class="stats">
+        <div class="stat"><strong>6</strong><span>环视相机</span></div>
+        <div class="stat"><strong>9600</strong><span>EVA-ViT 图像 token</span></div>
+        <div class="stat"><strong>513</strong><span>注入 LLM 的视觉 token</span></div>
+        <div class="stat"><strong>6×6×2</strong><span>命令模态 × 时间步 × 坐标</span></div>
+      </div>
+      <h2>架构主链</h2>
+      <div class="flow">
+        <div class="node"><strong>EVA-ViT</strong><span>六相机图像 → 每相机 40×40、1024 维特征</span></div><div class="arrow">↓</div>
+        <div class="node"><strong>双 PETR Head</strong><span>检测/运动与地图分别建模，并维护跨帧 query memory</span></div><div class="arrow">↓</div>
+        <div class="node"><strong>LLaVA-Llama</strong><span>513 个结构化视觉 token 替换文本中的 &lt;image&gt;</span></div><div class="arrow">↓</div>
+        <div class="node"><strong>VAE + GRU Planner</strong><span>规划 token 隐状态 → 六个命令模态、六步二维轨迹</span></div>
+      </div>
+      <h2>四个核心 insight</h2>
+      <div class="grid-2">
+        <article class="card"><h3>语义空间连接动作空间</h3><p>不让 LLM 打印浮点坐标，而是把特殊 token hidden state 当作可微接口，既保留推理能力，又避免文本数值解析不稳定。</p></article>
+        <article class="card"><h3>无显式 BEV 的 3D 建模</h3><p>像素沿 64 个 LID 深度 bin 反投影，生成 3D positional embedding；PETR query 再对多相机特征做 cross-attention。</p></article>
+        <article class="card"><h3>时序不是堆叠多帧</h3><p><code>queue_length=1</code>。跨帧信息存在 query memory 中，并通过 ego motion 变换到当前坐标系。</p></article>
+        <article class="card"><h3>端到端不等于直接控制</h3><p>神经网络预测 waypoint，闭环执行仍由 PID 完成。这是学习规划与经典控制的分层系统。</p></article>
+      </div>
+      <div class="callout warn"><strong>重要纠偏：</strong>源码中没有独立的 BLIP-2 式 Q-Former。<code>pretrain_qformer</code> 是权重目录名；视觉桥接由 PETR extra query、scene memory 和 <code>256→4096</code> 投影承担。</div>
+    </section>
+
+    <section id="forward" class="panel">
+      <h2>从六张图到轨迹</h2>
+      <div class="table-wrap"><table><thead><tr><th>步骤</th><th>形状/实现</th><th>作用</th></tr></thead><tbody>
+        <tr><td>输入</td><td><code>(B,6,3,640,640)</code></td><td>六路环视图像，以及相机参数、CAN bus、导航命令和 ego pose</td></tr>
+        <tr><td>EVA-ViT</td><td><code>(B,6,1024,40,40)</code></td><td>patch=16，共 9600 个图像 token</td></tr>
+        <tr><td>3D 位置编码</td><td><code>(B,9600,256)</code></td><td>像素中心 × 深度 bin，经 <code>lidar2img⁻¹</code> 反投影</td></tr>
+        <tr><td>检测/地图 Head</td><td>PETR temporal decoder</td><td>结构化对象、运动、道路元素和 VLM query</td></tr>
+        <tr><td>视觉前缀</td><td><code>(B,513,4096)</code></td><td>检测 257 token + 地图 256 token</td></tr>
+        <tr><td>LLM</td><td><code>ego_feature: (B,4096)</code></td><td>提取 <code>&lt;waypoint_ego&gt;</code> 位置隐状态</td></tr>
+        <tr><td>Planner</td><td><code>(B,6,6,2)</code></td><td>六命令模态 × 六时间步 × xy 增量</td></tr>
+      </tbody></table></div>
+      <h2>代码调用链</h2>
+      <pre>Orion.forward(data, return_loss=True)
+└─ forward_train()                         # orion.py:441
+   ├─ pad_sequence(input_ids, vlm_labels)
+   ├─ extract_feat(img)                    # EVA-ViT
+   └─ forward_pts_train()
+      ├─ position_embeding()
+      ├─ pts_bbox_head()                   # OrionHead
+      ├─ map_head()                        # OrionHeadM
+      ├─ cat(det_query, map_query)         # (B,513,4096)
+      ├─ lm_head(return_ego_feature=True)
+      └─ VAE/GRU decoder + planning losses</pre>
+      <h2>513 的来源</h2>
+      <div class="grid-3">
+        <div class="stat"><strong>256</strong><span>检测 head extra queries</span></div>
+        <div class="stat"><strong>1</strong><span>CAN bus / ego token</span></div>
+        <div class="stat"><strong>256</strong><span>地图 head extra queries</span></div>
+      </div>
+      <div class="callout"><strong>关键理解：</strong>特殊 token 不是最终文字答案，而是梯度接口。轨迹 loss 会通过它回流到 LLM LoRA 和视觉投影模块，实现 reasoning-to-action 对齐。</div>
+    </section>
+
+    <section id="training" class="panel">
+      <h2>三阶段训练</h2>
+      <div class="table-wrap"><table><thead><tr><th>阶段</th><th>目标</th><th>文本数据</th><th>规划分支</th></tr></thead><tbody>
+        <tr><td>Stage 1</td><td>感知 + VQA 对齐</td><td>Chat-B2D + 在线目标 QA</td><td>关闭：<code>use_gen_token=False</code></td></tr>
+        <tr><td>Stage 2</td><td>规划专项训练</td><td>Planning QA only</td><td>VAE + GRU + collision</td></tr>
+        <tr><td>Stage 3</td><td>推理与规划联合微调</td><td>80% planning，20% mixed QA</td><td>同 Stage 2</td></tr>
+      </tbody></table></div>
+      <div class="callout warn">Stage 2/3 配置中的 <code>load_from=None</code> 是占位值。实际训练必须手动加载上一阶段 checkpoint。</div>
+      <h2>多任务损失</h2>
+      <div class="grid-2">
+        <article class="card"><h3>感知与地图</h3><p><code>loss_cls</code>、<code>loss_bbox</code>、DN query、交通灯状态、地图类别与 11 个控制点回归。</p></article>
+        <article class="card"><h3>运动与规划</h3><p>agent 多模态运动、ego L1、地图边界、碰撞约束和 VAE prior/posterior 分布对齐。</p></article>
+      </div>
+      <h2>为什么 VAE 合理</h2>
+      <pre>训练：
+q(z | ego_feature, GT_future)  ← posterior
+p(z | ego_feature)             ← prior
+ProbabilisticLoss 对齐两者
+z + ego_feature → GRU → 6 modes × 6 delta waypoints
+
+推理：
+只能访问 p(z | ego_feature)
+按 ego_fut_cmd 选择一个 mode
+对 delta waypoint 做 cumsum → 绝对轨迹</pre>
+      <p>同一个场景可能存在多条合理轨迹。显式分布与命令模态能够避免直接回归平均出一条“不左不右”的轨迹。</p>
+    </section>
+
+    <section id="temporal" class="panel">
+      <h2>数据与坐标</h2>
+      <div class="callout danger">CARLA/UE4 原始数据是左手系，预处理会转换到右手 LiDAR/nuScenes 风格坐标。框、地图、轨迹或外参漏转时，通常不会报错，而会产生镜像轨迹或横向偏移。</div>
+      <div class="table-wrap"><table><thead><tr><th>字段</th><th>典型形状</th><th>语义</th></tr></thead><tbody>
+        <tr><td>img</td><td><code>(B,6,3,640,640)</code></td><td>六路图像</td></tr>
+        <tr><td>lidar2img</td><td><code>(B,6,4,4)</code></td><td>3D 到像素投影</td></tr>
+        <tr><td>can_bus</td><td><code>(B,18)</code></td><td>位置、姿态、速度、加速度与角速度</td></tr>
+        <tr><td>gt_attr_labels</td><td><code>list[(Nᵢ,34)]</code></td><td>agent 未来运动与 mask</td></tr>
+        <tr><td>map points</td><td><code>list[(Mᵢ,11,2)]</code></td><td>六类地图折线</td></tr>
+        <tr><td>ego_fut_trajs</td><td><code>(B,1,6,2)</code></td><td>未来位移增量</td></tr>
+      </tbody></table></div>
+      <h2>真实的时序机制</h2>
+      <div class="grid-3">
+        <article class="card"><h3>连续 sampler</h3><p>同一 batch slot 连续读取同一路线帧，使 memory 能够继承。</p></article>
+        <article class="card"><h3>坐标补偿</h3><p><code>ego_pose_inv</code> 把历史 reference point 与 pose 变换到当前帧。</p></article>
+        <article class="card"><h3>Memory 更新</h3><p>每帧选择 top-300 proposal，前插到 600-slot memory。</p></article>
+      </div>
+      <p><code>queue_length=1</code> 表示 backbone 只处理当前帧；跨帧信息存在 query memory，而不是图像维度。它节省显存，但依赖序列顺序和正确 reset。</p>
+    </section>
+
+    <section id="control" class="panel">
+      <h2>闭环执行链</h2>
+      <pre>CARLA: 6 RGB + GPS + IMU + speed
+  → RoutePlanner: command + near waypoint
+  → ORION: 6 个 ego-frame waypoint
+  → PIDController
+  → carla.VehicleControl(steer, throttle, brake)</pre>
+      <div class="table-wrap"><table><thead><tr><th>控制</th><th>计算</th><th>工程限制</th></tr></thead><tbody>
+        <tr><td>Steering</td><td>在预测折线上选择约 3.5m aim point</td><td>route target 默认不直接参与 steering</td></tr>
+        <tr><td>Desired speed</td><td>由前两个 waypoint 距离估计</td><td>目标速度过低或超速比 &gt;1.1 时刹车</td></tr>
+        <tr><td>Throttle / brake</td><td>互斥处理</td><td>throttle 上限 0.75</td></tr>
+        <tr><td>Speed cap</td><td>固定规则</td><td><code>speed &gt; 5m/s → throttle=0</code></td></tr>
+      </tbody></table></div>
+      <div class="callout warn">ORION 是端到端轨迹规划系统，但不是严格 sensor-to-control：最后一段仍是 PID 和规则。</div>
+      <h2>开环好不等于闭环好</h2>
+      <p>开环预测错误不会改变下一帧；闭环中一次偏差会改变后续相机画面，形成 covariate shift，并经 PID、车辆动力学和交通交互持续放大。因此 L2/collision 与 Driving Score/Success Rate 衡量不同能力。</p>
+    </section>
+
+    <section id="interview" class="panel">
+      <h2>高频盘问与回答骨架</h2>
+      <div class="answer-controls">
+        <button class="small-button" id="open-all">展开答案</button>
+        <button class="small-button" id="close-all">收起自测</button>
+      </div>
+      <details><summary>ORION 相比传统端到端规划的关键创新是什么？</summary><p>把检测/地图的结构化 token 注入 VLM，并用 <code>&lt;waypoint_ego&gt;</code> hidden state 驱动连续 planner，实现语义推理与动作空间的可微对齐。</p></details>
+      <details><summary>QT-Former 在代码哪里？</summary><p>没有独立 BLIP-2 式 Q-Former；实际由双 PETR head 的 extra query、时序 scene memory 和 256→4096 投影承担视觉聚合与桥接。</p></details>
+      <details><summary>没有 BEV，如何获得 3D 几何？</summary><p>利用相机内外参把像素沿 LID 深度 bins 反投影为 3D positional embedding，query 再对多视角 token 做 PETR cross-attention。</p></details>
+      <details><summary>为什么检测和地图分两个 head？</summary><p>对象与道路拓扑具有不同的 query、匹配和 loss；分头保留任务归纳偏置，最终在 LLM 前融合为统一视觉上下文。</p></details>
+      <details><summary>为什么是六个规划 mode？</summary><p>与 CARLA 六类 route command 对齐。网络同时预测六条，再按 command 选择，缓解多模态未来的均值化。</p></details>
+      <details><summary>Stage 2 与 Stage 3 有什么区别？</summary><p>架构相同；Stage 2 是 planning-only，Stage 3 以 80/20 混合 planning 与通用 QA，避免语言推理能力退化。</p></details>
+      <details><summary>ORION 是真正端到端吗？</summary><p>视觉到轨迹是联合优化的，但轨迹到控制由 PID 完成。因此它是 end-to-end planning，而不是纯 sensor-to-control。</p></details>
+      <details><summary>你认为最大的工程风险是什么？</summary><p>坐标系一致性、时序 memory reset、Stage checkpoint 手工串联、闭环 JPEG 域偏移、command mode 选择错误，以及 PID 启发式不匹配。</p></details>
+      <h2>回答任何架构题的四段式</h2>
+      <div class="grid-2">
+        <article class="card"><h3>1. Problem</h3><p>原方法具体卡在哪里？不要先背模块名。</p></article>
+        <article class="card"><h3>2. Design</h3><p>新方法加入了什么接口或归纳偏置？</p></article>
+        <article class="card"><h3>3. Evidence</h3><p>给出 tensor shape、loss 或源码调用点。</p></article>
+        <article class="card"><h3>4. Trade-off</h3><p>讨论显存、延迟、域偏移、可解释性与失败模式。</p></article>
+      </div>
+    </section>
+
+    <footer class="source">
+      <p>完整 Markdown 版：<a href="./README.md">ORION 深度笔记</a> · 仓库：<a href="https://github.com/Gxt2002/paper-deep-reading">paper-deep-reading</a></p>
+      <p>依据 ORION 当前开源代码整理，重点源码包括 <code>orion.py</code>、<code>orion_head.py</code>、<code>b2d_orion_dataset.py</code> 与 <code>orion_b2d_agent.py</code>。</p>
+    </footer>
+  </main>
+  <script>
+    const tabs = [...document.querySelectorAll(".tab")];
+    const panels = [...document.querySelectorAll(".panel")];
+    function selectTab(id, updateHash = true) {
+      const target = document.getElementById(id) ? id : "overview";
+      tabs.forEach(tab => tab.classList.toggle("active", tab.dataset.tab === target));
+      panels.forEach(panel => panel.classList.toggle("active", panel.id === target));
+      if (updateHash) history.replaceState(null, "", "#" + target);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+    tabs.forEach(tab => tab.addEventListener("click", () => selectTab(tab.dataset.tab)));
+    document.getElementById("open-all").addEventListener("click", () => {
+      document.querySelectorAll("details").forEach(item => item.open = true);
+    });
+    document.getElementById("close-all").addEventListener("click", () => {
+      document.querySelectorAll("details").forEach(item => item.open = false);
+    });
+    selectTab(location.hash.slice(1), false);
+  </script>
+</body>
+</html>
